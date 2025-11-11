@@ -54,12 +54,13 @@ app.use((req, res, next) => {
 });
 app.use("/api/analyze", analyzeRoutes);
 
-// ✅ 7. 서버 실행
+// ✅ 7. 로컬서버 실행
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`🚀 서버 실행 중: http://localhost:${PORT}`);
 });
-
+// import serverless from "@vendia/serverless-express";
+// export const handler = serverless({ app });
 // ✅ 8. 예외 처리
 process.on("uncaughtException", (err) => {
   console.error("💥 Uncaught Exception:", err);

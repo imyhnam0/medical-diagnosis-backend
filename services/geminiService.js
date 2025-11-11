@@ -51,6 +51,7 @@ async function callGeminiWithRetry(prompt, { retries = 3, baseDelayMs = 3000 } =
 export async function analyzeSocialHistory(req, res) {
   try {
     const personalInfo = req.body;
+    console.log("➡️ 요청 수신: POST /api/analyze/social-history", personalInfo);
 
     const socialInfo = {
       age: personalInfo.age?.toString() || "",
@@ -82,31 +83,64 @@ export async function analyzeSocialHistory(req, res) {
     ];
 
     // 🔹 프롬프트 구성 (추론 강화 버전)
-  const prompt = `
-  당신은 의료 전문가로서 이력에서 **연관된 요인을 논리적으로 추론해 선택하는 AI**입니다.
-
-  ⚙️ 분석 대상 (입력 데이터):
-  ${JSON.stringify(socialInfo, null, 2)}
-
-  📘 이력 리스트 (이 중에서만 선택 가능):
-  ${socialHistoryMapping.join(", ")}
-
-  1️⃣ 위 "이력 리스트"는 참고 가능한 선택지입니다.  
-   그러나 당신은 의료 전문가로서, **사용자의 연령·성별·생활습관을 바탕으로 가장 합리적이고 상식적인 요인들을 스스로 판단**해야 합니다.  
-   선택은 반드시 리스트 내 항목 중에서만 하되,  
-   **직접적인 단서뿐 아니라 상식적·의학적 추론으로 연관될 수 있는 항목도 자유롭게 포함**하세요.
-
-  2️⃣ 예를 들어:
-   - 나이가 매우 높다면 → ["고령", "50세 이상", "55세 이상", "면역저하"]처럼 여러 연령 관련 요인을 포함할 수 있습니다.
-   - 운동을 거의 하지 않는다면 → ["운동 부족", "신체활동 부족"]
-   - 비만(BMI ≥ 30)이면 → ["비만", "고지방 식습관"]
-   - “비흡연”처럼 부정 표현이 있으면 → 관련 요인은 제외합니다.
-
-  📤 출력 형식 (이 형식 외 텍스트는 절대 포함하지 마세요):
-  {
-    "matchedKeywords": ["키워드1", "키워드2", ...]
-  }
-  `;
+    const prompt = `
+    당신은 의료 데이터 매칭 시스템입니다. 주어진 사용자 정보에서 **명확하고 직접적으로 일치하는 요인만** 선택하세요.
+    
+    ⚙️ 입력 데이터:
+    ${JSON.stringify(socialInfo, null, 2)}
+    
+    📘 선택 가능한 이력 리스트:
+    ${socialHistoryMapping.join(", ")}
+    
+    🚨 중요 규칙:
+    1. **명시된 정보만** 사용하세요. 추론이나 가정은 금지입니다.
+    2. 각 항목별 매칭 기준:
+       
+       📌 연령 (age):
+       - 50 이상 → ["50세 이상"]
+       - 55 이상 → ["55세 이상"]
+       - 65 이상 → ["고령"]
+       
+       📌 성별 (gender):
+       - "남성" → 성별 관련 키워드 없음 (리스트에 "남성"이 없으므로 선택 안 함)
+       - "여성" → ["여성"]
+       
+       📌 BMI (bmi):
+       - 30 이상 → ["비만"]
+       - 그 외 → 선택 안 함
+       
+       📌 음주 (drinking):
+       - "자주" 또는 "매일" 또는 주 4회이상 → ["음주", "알코올 중독"]
+       - "가끔" → ["음주"]
+       - "안함" 또는 "비음주" → 선택 안 함
+       
+       📌 흡연 (smoking):
+       - "예" 또는 "흡연" → ["흡연", "간접흡연"]
+       - "아니오" 또는 "비흡연" → 선택 안 함
+       
+       📌 직업 (job):
+       - "사무직" → ["사무직", "앉아 있는 직업"]
+       - "육체노동" 또는 "건설" → ["육체 노동", "무거운 물건을 드는 직업", "팔을 많이 쓰는 직업","야외 노동"]
+       - 그 외 → 직업 관련 키워드 선택 안 함
+       
+       📌 운동 (exercise):
+       - "안함" 또는 "거의안함" → ["운동 부족", "신체활동 부족"]
+       - "자주" 또는 "매일" 또는 주 3회이상 → ["운동 습관"]
+       - 그 외 → 선택 안 함
+    
+    3. **부정 표현이 있으면 절대 포함하지 마세요**:
+       - 비흡연 → "흡연" 선택 안 함
+       - 비음주 → "음주" 선택 안 함
+    
+    4. **입력에 없는 정보는 추론하지 마세요**:
+       - 직업이 "사무직"이라고 "스트레스"를 자동으로 추가하지 마세요
+       - 나이가 많다고 "면역저하"를 자동으로 추가하지 마세요
+    
+    📤 출력 (JSON만, 다른 텍스트 없음):
+    {
+      "matchedKeywords": ["키워드1", "키워드2"]
+    }
+    `;
 
 
     const data = await callGeminiWithRetry(prompt);
@@ -151,6 +185,9 @@ export async function analyzeSocialHistory(req, res) {
 // ✅ 과거 질환 분석
 export async function analyzePastDiseases(req, res) {
   const { pastDiseasesInput } = req.body;
+  console.log("➡️ 요청 수신: POST /api/analyze/past-diseases", {
+    pastDiseasesInput,
+  });
 
   const pastDiseaseMapping = [
     "암", "항암 치료", "담도질환", "최근 위장관 감염", "B형/C형 간염", "알코올성 간질환", "만성 간염",
@@ -179,8 +216,10 @@ export async function analyzePastDiseases(req, res) {
   당신은 의료 전문가로서 사용자의 과거 질환 이력에서 연관된 키워드를 찾는 AI입니다.
 
   규칙:
-  1️⃣ 사용자 입력에서 언급된 질병, 증상, 상태를 모두 찾아내세요.
-  2️⃣ 주어진 "과거 질환 이력 매핑" 리스트에서 사용자 입력과 연관이 있다고 생각하는 키워드들을 찾아주세요.
+  1️⃣ 사용자가 언급한 질병이나 질환명이 아래 리스트의 표현과 일치하거나 유사하거나, 
+    표기상만 약간 다른 경우(예: '당뇨병' ↔ '당뇨')에만 선택하세요.
+  2️⃣ 의학적으로 연관되거나 합병증 가능성이 있는 질환은 포함하지 마세요. 
+   예를 들어, "당뇨" 입력 시 "고혈압"이나 "심근경색"은 제외합니다.
   3️⃣ 결과는 JSON 형태로 출력하세요.
 
   사용자 입력: "${pastDiseasesInput}"
@@ -258,6 +297,7 @@ export async function analyzePastDiseases(req, res) {
 // ✅ 흉통인지 아닌지 분석 
 export async function analyzeChestPain(req, res) {
   const { userInput } = req.body;
+  console.log("➡️ 요청 수신: POST /api/analyze/chestpain", { userInput });
 
   if (!userInput || userInput.trim() === "") {
     return res.status(400).json({ error: "userInput이 비어 있습니다." });
@@ -430,6 +470,11 @@ export async function analyzeSymptoms(req, res) {
       symptomCategories,
       previousSymptoms = [],
     } = req.body;
+    console.log("➡️ 요청 수신: POST /api/analyze/symptoms", {
+      question,
+      answer,
+      previousSymptoms,
+    });
 
     const effectiveAnswer = (answer ?? "").trim();
     if (!effectiveAnswer) {
@@ -542,6 +587,9 @@ ${allSymptoms.join(", ")}
 export async function analyzeAggravation(req, res) {
     try {
       const { aggravateDiseaseInput } = req.body;
+      console.log("➡️ 요청 수신: POST /api/analyze/aggravation", {
+        aggravateDiseaseInput,
+      });
       if (!aggravateDiseaseInput || aggravateDiseaseInput.trim() === "") {
         return res.status(400).json({ error: "입력값이 없습니다." });
       }
@@ -631,7 +679,12 @@ export async function analyzeAggravation(req, res) {
       ];
   
       console.log("악화 요인 키워드:", matched, "개수:", matched.length);
-      console.log("악화 요인 질병 목록:", unique, "개수:", unique.length);
+      // id와 악화 요인만 추출해서 출력
+      const conciseList = unique.map(d => ({
+        id: d.id,
+        aggravateFactors: d["악화 요인"]
+      }));
+      console.log("악화 요인(id & 요인):", conciseList, "개수:", conciseList.length);
   
       // ✅ 응답
       return res.json({
@@ -648,6 +701,9 @@ export async function analyzeAggravation(req, res) {
 export async function analyzeRiskFactor(req, res) {
     try {
       const { riskFactorInput } = req.body;
+      console.log("➡️ 요청 수신: POST /api/analyze/riskfactor", {
+        riskFactorInput,
+      });
   
       if (!riskFactorInput || riskFactorInput.trim() === "") {
         return res.status(400).json({ error: "입력값이 없습니다." });
@@ -746,7 +802,11 @@ export async function analyzeRiskFactor(req, res) {
       // 🔹 로그 출력
       
       console.log("위험 요인 키워드:", matched, "개수:", matched.length);
-      console.log("위험 요인 질병 목록:", unique, "개수:", unique.length);
+      const conciseList = unique.map(d => ({
+        id: d.id,
+        riskFactors: d["위험 요인"]
+      }));
+      console.log("위험 요인(id & 요인):", conciseList, "개수:", conciseList.length);
   
       // ✅ 응답 반환
       return res.json({
@@ -762,6 +822,7 @@ export async function analyzeRiskFactor(req, res) {
 export async function getDiseaseInfo(req, res) {
   try {
     const { diseaseName } = req.body;
+    console.log("➡️ 요청 수신: POST /api/analyze/disease-info", { diseaseName });
     if (!diseaseName || diseaseName.trim() === "") {
       return res.status(400).json({ error: "질병명이 비어 있습니다." });
     }
