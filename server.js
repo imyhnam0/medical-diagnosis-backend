@@ -10,6 +10,7 @@ import analyzeRoutes from "./routes/analyzeRoutes.js"; // ✅ 라우터 불러�
 
 // ✅ 1. .env 로드
 dotenv.config();
+console.log("✅ GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
 
 // ✅ 2. Express 앱 설정"type": "module"
 const app = express();

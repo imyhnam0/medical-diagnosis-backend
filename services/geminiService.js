@@ -1,8 +1,321 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { db } from "../server.js";
 
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+console.log("GEMINI_API_KEY:", GEMINI_API_KEY);
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+
+
+
+//429 에러시 재시도하도록
+async function callGeminiWithRetry(prompt, { retries = 3, baseDelayMs = 3000 } = {}) {
+  console.log("GEMINI_ENDPOINT:", GEMINI_API_KEY);
+  if (!GEMINI_API_KEY) {
+    throw new Error("Gemini API 키가 설정되어 있지 않습니다.");
+  }
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(GEMINI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    });
+
+    if (response.status === 429 && attempt < retries) {
+      const wait = baseDelayMs * Math.pow(2, attempt);
+      console.warn(`⏳ Gemini 429 응답. ${wait}ms 후 재시도합니다. (시도 ${attempt + 1}/${retries + 1})`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Gemini API 오류: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  }
+
+  throw new Error("Gemini API 재시도가 모두 실패했습니다.");
+}
+
+// ✅ 사회적 이력 분석
+export async function analyzeSocialHistory(req, res) {
+  try {
+    const personalInfo = req.body;
+
+    const socialInfo = {
+      age: personalInfo.age?.toString() || "",
+      bmi: personalInfo.bmi?.toString() || "",
+      gender: personalInfo.gender || "",
+      drinking: personalInfo.drinking || "",
+      smoking: personalInfo.smoking || "",
+      job: personalInfo.job || "",
+      exercise: personalInfo.exercise || "",
+    };
+
+    const socialHistoryMapping = [
+      "항암 치료 경험", "여행력", "음주", "흡연", "곰팡이 독소 노출", "간염 위험 인자",
+      "50세 이상", "여성", "잦은 병원 방문", "안심 추구 행동", "사무직", "육체 노동", "불안 성향",
+      "생활 스트레스", "스트레스", "불안", "회피 행동", "직장 스트레스", "잘못된 자세",
+      "무거운 물건 들기", "직업적 노출", "열악한 주거환경", "위생 불량", "여행",
+      "키 크고 마른 체형 남성", "최근 질환", "격한 운동", "사고", "운동 습관",
+      "불량한 식습관", "운동 부족", "고지방 식이", "고지방 식습관", "코카인 사용", "좌식 생활",
+      "고령", "면역저하", "바이오매스 노출", "장기간 부동", "호르몬 요법", "암 치료",
+      "신경성 폭식증", "회복 탄력성 부족", "가족 스트레스", "신체활동 부족", "운동선수 활동",
+      "건강검진 미흡", "햇빛 노출 부족", "팔을 많이 쓰는 직업", "수면 부족", "정서적 스트레스",
+      "식습관", "찬 환경 노출", "뜨거운 음료 섭취", "비만", "야식", "가족 갈등",
+      "낮은 대처 능력", "감염자 접촉", "감염 노출", "특별한 요인 없음", "야외 노동",
+      "수분 부족", "전쟁 경험", "학대", "실직", "사회적 고립", "영양 불량", "늦은 출산",
+      "심혈관 검진 부족", "부인과 병력", "호르몬 치료", "노숙", "알코올 중독", "학대 경험",
+      "이차적 이득", "무거운 물건을 드는 직업", "알레르겐 노출", "간접흡연", "불법 약물 사용",
+      "55세 이상", "가족력", "풍토지역 거주", "과밀한 생활", "허약 상태", "식욕억제제",
+      "메탐페타민 사용", "최근 여행", "장거리 여행", "특별한 위험 요인 없음", "앉아 있는 직업"
+    ];
+
+    // 🔹 프롬프트 구성 (추론 강화 버전)
+  const prompt = `
+  당신은 의료 전문가로서 이력에서 **연관된 요인을 논리적으로 추론해 선택하는 AI**입니다.
+
+  ⚙️ 분석 대상 (입력 데이터):
+  ${JSON.stringify(socialInfo, null, 2)}
+
+  📘 이력 리스트 (이 중에서만 선택 가능):
+  ${socialHistoryMapping.join(", ")}
+
+  1️⃣ 위 "이력 리스트"는 참고 가능한 선택지입니다.  
+   그러나 당신은 의료 전문가로서, **사용자의 연령·성별·생활습관을 바탕으로 가장 합리적이고 상식적인 요인들을 스스로 판단**해야 합니다.  
+   선택은 반드시 리스트 내 항목 중에서만 하되,  
+   **직접적인 단서뿐 아니라 상식적·의학적 추론으로 연관될 수 있는 항목도 자유롭게 포함**하세요.
+
+  2️⃣ 예를 들어:
+   - 나이가 매우 높다면 → ["고령", "50세 이상", "55세 이상", "면역저하"]처럼 여러 연령 관련 요인을 포함할 수 있습니다.
+   - 운동을 거의 하지 않는다면 → ["운동 부족", "신체활동 부족"]
+   - 비만(BMI ≥ 30)이면 → ["비만", "고지방 식습관"]
+   - “비흡연”처럼 부정 표현이 있으면 → 관련 요인은 제외합니다.
+
+  📤 출력 형식 (이 형식 외 텍스트는 절대 포함하지 마세요):
+  {
+    "matchedKeywords": ["키워드1", "키워드2", ...]
+  }
+  `;
+
+
+    const data = await callGeminiWithRetry(prompt);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const parsed = parseJsonResponse(text);
+    const matched = Array.isArray(parsed.matchedKeywords) ? parsed.matchedKeywords : [];
+
+    if (matched.length === 0) {
+      console.log("사회적이력 키워드가 없습니다.");
+      return res.json({ matchedKeywords: [], diseases: [] });
+    }
+
+    // 🔹 Firestore 검색 (함수 내부)
+    const diseases = [];
+    for (const keyword of matched) {
+      const snapshot = await db
+        .collection("diseases_ko")
+        .where("사회적 이력", "array-contains", keyword)
+        .get();
+      snapshot.forEach((doc) => diseases.push({ id: doc.id, ...doc.data() }));
+    }
+
+    // 중복 제거
+    const unique = [
+      ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
+    ];
+
+    console.log("사회적이력 키워드:", matched, "개수:", matched.length);
+    // id와 사회적 이력만 추출해서 출력
+    const conciseList = unique.map(d => ({
+      id: d.id,
+      socialHistory: d["사회적 이력"]
+    }));
+    console.log("사회적이력(id & 이력):", conciseList, "개수:", conciseList.length);
+
+    return res.json({ matchedKeywords: matched, diseases: unique });
+  } catch (error) {
+    console.error("❌ 사회적 이력 분석 오류:", error);
+    return res.status(500).json({ error: "사회적 이력 분석 실패" });
+  }
+}
+
+// ✅ 흉통인지 아닌지 분석 
+export async function analyzeChestPain(req, res) {
+  const { userInput } = req.body;
+
+  if (!userInput || userInput.trim() === "") {
+    return res.status(400).json({ error: "userInput이 비어 있습니다." });
+  }
+
+  const prompt = `
+  당신은 의료 데이터 분석 AI입니다.  
+
+  아래는 흉통(가슴 통증) 관련 증상 예시 문장들입니다.
+
+  예시:
+  가슴이 아파요
+  가슴이 짓눌리는 느낌이에요
+  가슴이 쿡쿡 쑤셔요
+  가슴이 무거워요
+  가슴이 조여요
+  가슴이 터질 것 같아요
+  가슴이 타는 것 같아요
+  가슴이 찢어질 것 같아요
+  가슴이 따가워요
+  바늘로 찌르는 느낌이에요
+  쥐어짜는 듯해요
+  가슴이 화끈거려요
+  가슴이 얼얼해요
+  가슴이 벌어질 것 같아요
+  가슴이 뜨거워요
+  심장이 쿵쿵 뛰어요
+  가슴이 벌렁거려요
+  심장이 불규칙해요
+  숨 쉴 때 가슴이 아파요
+  기침하면 가슴이 아파요
+  운동하고 나면 아파요
+  스트레스 받으면 아파요
+  식사 후에 아파요
+  가슴이 조여서 숨이 안 쉬어져요
+  가슴이 울렁거려요
+  가슴이 답답해요
+  심장이 멎을 것 같아요
+  숨이 막혀요
+  가슴이 무언가 걸린 것 같아요
+  계단 오르면 가슴이 아파요
+  가만히 있어도 아파요
+  누우면 아파요
+  앉아있기 힘들어요
+  왼쪽 가슴이 아파요
+  오른쪽 가슴이 아파요
+  중앙이 아파요
+  팔로 통증이 퍼져요
+  턱까지 아파요
+  등까지 아파요
+  숨 쉴 때 통증이 심해져요
+  심장 쪽이 욱신거려요
+  기운이 없어요
+  어지러워요
+  토할 것 같아요
+  메스꺼워요
+  식은땀이 나요
+  숨이 가빠요
+  숨을 크게 쉬기 어려워요
+  날카로운 통증이에요
+  찌릿한 통증이에요
+  화끈거려요
+  심장이 덜컥 내려앉는 느낌이에요
+  심장 박동이 느껴져요
+  맥이 빨라요
+  맥이 느려요
+  피곤해요
+  죽을 것 같아요
+  생명 위협 느껴요
+  병원 가야 할 것 같아요
+  차가운 땀이 나요
+  공기가 안 통해요
+  한숨 쉬고 싶어요
+  심장이 조여요
+  계속 뭔가 불편해요
+  불쾌감이 있어요
+  움직이기 힘들어요
+  숨이 차요
+  눌리는 느낌이에요
+  압박감이 있어요
+  밤에 통증이 심해져요
+  아침에 더 아파요
+  몸을 구부리면 아파요
+  긴장하면 아파요
+  감기 후에 아파요
+  깜짝 놀랄 만큼 아파요
+  증상이 반복돼요
+  통증이 오락가락해요
+  약을 먹어도 안 나아요
+  가슴이 먹먹해요
+  가슴에 무언가 눌린 느낌
+  가슴이 전기가 오는 것 같아요
+  심장 부위에 통증이 있어요
+  숨을 참고 있어야 해요
+  가슴에 맥이 튀어요
+  화나면 아파요
+  무서울 때 가슴이 아파요
+  불안하면 아파요
+  식도가 아픈 것 같아요
+  삼킬 때 아파요
+  등 쪽으로 퍼지는 통증
+
+  ---
+
+  사용자가 입력한 문장이 위 예시들과 **의미적으로 유사한지** 판단하세요.  
+  만약 흉통 관련이라면 **의학적으로 자연스러운 후속 질문을 제안**하세요. 
+    - 예시:  
+      - "가슴이 답답해요" → "가슴이 어떻게 답답한가요? 쥐어짜는 듯한가요, 눌리는 듯한가요?"  
+      - "가슴이 아파요" → "통증은 언제 시작되었고, 얼마나 오래 지속되나요?"  
+      - "가슴이 조여요" → "조일 때 숨쉬기가 힘든가요, 혹은 운동할 때 심해지나요?"
+  
+  다음 JSON 형식으로만 출력하세요:
+  {
+    "result": "TRUE",
+    "similar": "<가장 유사한 예시 문장>",
+    "followUpQuestion": "<사용자에게 던질 후속 질문>"
+  }
+
+  흉통과 무관하다면:
+  {"result":"FALSE"}
+
+  그 외의 말은 절대 하지 마세요.
+  사용자 입력: "${userInput}"
+  `;
+
+  try {
+    // ✅ Gemini API 호출
+    const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
+
+    // ✅ Flutter의 statusCode == 200 로직과 동일
+    if (response.status === 200) {
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
+
+      console.log("🤖 AI 응답:", text);
+
+      const parsed = parseJsonResponse(text);
+      if (parsed && typeof parsed === "object" && "result" in parsed) {
+        console.log("📊 파싱된 JSON:", parsed);
+        return res.json(parsed);
+      }
+
+      console.warn("⚠️ Gemini 응답 파싱 실패:", text);
+      return res.json({ result: "FALSE" });
+    } else {
+      const errorText = await response.text();
+      console.warn("⚠️ API Error:", errorText);
+      return res.json({ result: "FALSE" });
+    }
+  } catch (error) {
+    console.error("💥 흉통 분석 오류:", error);
+    return res.status(500).json({ error: "서버 내부 오류" });
+  }
+}
 
 // ✅ Gemini를 사용해 질병 정보 요약
 export async function getDiseaseInfo(req, res) {
@@ -26,23 +339,7 @@ export async function getDiseaseInfo(req, res) {
   의료적 정확성을 유지하면서 일반인이 이해하기 쉽게 작성해주세요.
   `;
   
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-  
-      if (!response.ok) {
-        console.error("❌ Gemini 호출 실패:", response.status);
-        return res.status(500).json({ error: "Gemini API 호출 실패" });
-      }
-  
-      const data = await response.json();
+      const data = await callGeminiWithRetry(prompt);
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   
       // 🔹 JSON 파싱
@@ -102,227 +399,51 @@ export async function analyzeSymptoms(req, res) {
       `;
   
       // ✅ Gemini API 호출
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-  
-      if (response.status === 200) {
-        const data = await response.json();
-  
-        const rawText =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-  
-        // 쉼표 기준 분리 후 중복 제거
-        const symptoms = rawText
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-  
-        const uniqueSymptoms = [...new Set(symptoms)];
-        console.log("🩺 추출된 증상:", uniqueSymptoms);
-  
-        // ✅ Firestore에서 관련 질병 검색
-        const diseases = [];
-        for (const symptom of uniqueSymptoms) {
-        const snapshot = await db
-            .collection("diseases_ko")
-            .where("증상", "array-contains", symptom)
-            .get();
+    const data = await callGeminiWithRetry(prompt);
 
-        snapshot.forEach((doc) => {
-            diseases.push({ id: doc.id, ...doc.data() });
-        });
-        }
+    const rawText =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
-        // 🔹 중복 제거
-        const uniqueDiseases = [
-        ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
-        ];
+    // 쉼표 기준 분리 후 중복 제거
+    const symptoms = rawText
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
-        console.log("🧬 관련 질병 수:", uniqueDiseases.length);
+    const uniqueSymptoms = [...new Set(symptoms)];
+    console.log("🩺 추출된 증상:", uniqueSymptoms);
 
-        // ✅ 최종 응답
-        return res.json({
-        matchedSymptoms: uniqueSymptoms,
-        diseases: uniqueDiseases,
-        });
-      } else {
-        const errorText = await response.text();
-        console.error("⚠️ Gemini API Error:", errorText);
-        return res
-          .status(500)
-          .json({ error: "Gemini API 호출 실패", details: errorText });
-      }
+    // ✅ Firestore에서 관련 질병 검색
+    const diseases = [];
+    for (const symptom of uniqueSymptoms) {
+      const snapshot = await db
+        .collection("diseases_ko")
+        .where("증상", "array-contains", symptom)
+        .get();
+
+      snapshot.forEach((doc) => {
+        diseases.push({ id: doc.id, ...doc.data() });
+      });
+    }
+
+    // 🔹 중복 제거
+    const uniqueDiseases = [
+      ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
+    ];
+
+    console.log("🧬 관련 질병 수:", uniqueDiseases.length);
+
+    // ✅ 최종 응답
+    return res.json({
+      matchedSymptoms: uniqueSymptoms,
+      diseases: uniqueDiseases,
+    });
     } catch (error) {
       console.error("💥 analyzeSymptoms 오류:", error);
       return res.status(500).json({ error: "서버 내부 오류" });
     }
   }
-// ✅ 흉통인지 아닌지 분석 
-export async function analyzeChestPain(req, res) {
-    const { userInput } = req.body;
-  
-    if (!userInput || userInput.trim() === "") {
-      return res.status(400).json({ error: "userInput이 비어 있습니다." });
-    }
-  
-    const prompt = `
-    당신은 의료 데이터 분석 AI입니다.  
 
-    아래는 흉통(가슴 통증) 관련 증상 예시 문장들입니다.
-
-    예시:
-    가슴이 아파요
-    가슴이 짓눌리는 느낌이에요
-    가슴이 쿡쿡 쑤셔요
-    가슴이 무거워요
-    가슴이 조여요
-    가슴이 터질 것 같아요
-    가슴이 타는 것 같아요
-    가슴이 찢어질 것 같아요
-    가슴이 따가워요
-    바늘로 찌르는 느낌이에요
-    쥐어짜는 듯해요
-    가슴이 화끈거려요
-    가슴이 얼얼해요
-    가슴이 벌어질 것 같아요
-    가슴이 뜨거워요
-    심장이 쿵쿵 뛰어요
-    가슴이 벌렁거려요
-    심장이 불규칙해요
-    숨 쉴 때 가슴이 아파요
-    기침하면 가슴이 아파요
-    운동하고 나면 아파요
-    스트레스 받으면 아파요
-    식사 후에 아파요
-    가슴이 조여서 숨이 안 쉬어져요
-    가슴이 울렁거려요
-    가슴이 답답해요
-    심장이 멎을 것 같아요
-    숨이 막혀요
-    가슴이 무언가 걸린 것 같아요
-    계단 오르면 가슴이 아파요
-    가만히 있어도 아파요
-    누우면 아파요
-    앉아있기 힘들어요
-    왼쪽 가슴이 아파요
-    오른쪽 가슴이 아파요
-    중앙이 아파요
-    팔로 통증이 퍼져요
-    턱까지 아파요
-    등까지 아파요
-    숨 쉴 때 통증이 심해져요
-    심장 쪽이 욱신거려요
-    기운이 없어요
-    어지러워요
-    토할 것 같아요
-    메스꺼워요
-    식은땀이 나요
-    숨이 가빠요
-    숨을 크게 쉬기 어려워요
-    날카로운 통증이에요
-    찌릿한 통증이에요
-    화끈거려요
-    심장이 덜컥 내려앉는 느낌이에요
-    심장 박동이 느껴져요
-    맥이 빨라요
-    맥이 느려요
-    피곤해요
-    죽을 것 같아요
-    생명 위협 느껴요
-    병원 가야 할 것 같아요
-    차가운 땀이 나요
-    공기가 안 통해요
-    한숨 쉬고 싶어요
-    심장이 조여요
-    계속 뭔가 불편해요
-    불쾌감이 있어요
-    움직이기 힘들어요
-    숨이 차요
-    눌리는 느낌이에요
-    압박감이 있어요
-    밤에 통증이 심해져요
-    아침에 더 아파요
-    몸을 구부리면 아파요
-    긴장하면 아파요
-    감기 후에 아파요
-    깜짝 놀랄 만큼 아파요
-    증상이 반복돼요
-    통증이 오락가락해요
-    약을 먹어도 안 나아요
-    가슴이 먹먹해요
-    가슴에 무언가 눌린 느낌
-    가슴이 전기가 오는 것 같아요
-    심장 부위에 통증이 있어요
-    숨을 참고 있어야 해요
-    가슴에 맥이 튀어요
-    화나면 아파요
-    무서울 때 가슴이 아파요
-    불안하면 아파요
-    식도가 아픈 것 같아요
-    삼킬 때 아파요
-    등 쪽으로 퍼지는 통증
-
-    ---
-
-    사용자가 입력한 문장이 위 예시들과 **의미적으로 유사한지** 판단하세요.  
-    만약 흉통 관련이라면 다음 JSON 형식으로만 출력하세요:
-    {"result":"TRUE","similar":"<가장 유사한 문장>"}
-
-    흉통과 무관하다면:
-    {"result":"FALSE"}
-
-    그 외의 말은 절대 하지 마세요.
-    사용자 입력: "${userInput}"
-    `;
-  
-    try {
-      // ✅ Gemini API 호출
-      const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-  
-      // ✅ Flutter의 statusCode == 200 로직과 동일
-    if (response.status === 200) {
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
-  
-        console.log("🤖 AI 응답:", text);
-  
-        try {
-          // ✅ JSON 파싱 시도
-          const jsonResponse = JSON.parse(text);
-          console.log("📊 파싱된 JSON:", jsonResponse);
-          return res.json(jsonResponse);
-        } catch (e) {
-          console.warn("⚠️ Gemini 응답 파싱 실패:", text);
-          console.warn("⚠️ 파싱 오류:", e.message);
-          return res.json({ result: "FALSE" });
-        }
-      } else {
-        const errorText = await response.text();
-        console.warn("⚠️ API Error:", errorText);
-        return res.json({ result: "FALSE" });
-      }
-    } catch (error) {
-      console.error("💥 흉통 분석 오류:", error);
-      return res.status(500).json({ error: "서버 내부 오류" });
-    }
-  }
 // ✅ 과거 질환 분석
 export async function analyzePastDiseases(req, res) {
   const { pastDiseasesInput } = req.body;
@@ -420,122 +541,6 @@ export async function analyzePastDiseases(req, res) {
   } catch (error) {
     console.error("❌ 과거 질환 분석 오류:", error);
     return res.status(500).json({ error: "과거 질환 분석 실패" });
-  }
-}
-
-// ✅ 사회적 이력 분석
-export async function analyzeSocialHistory(req, res) {
-  try {
-    const personalInfo = req.body;
-
-    const socialInfo = {
-      age: personalInfo.age?.toString() || "",
-      weight: personalInfo.weight?.toString() || "",
-      gender: personalInfo.gender || "",
-      drinking: personalInfo.drinking || "",
-      smoking: personalInfo.smoking || "",
-      job: personalInfo.job || "",
-      exercise: personalInfo.exercise || "",
-    };
-
-    const socialHistoryMapping = [
-      "항암 치료 경험", "여행력", "음주", "흡연", "곰팡이 독소 노출", "간염 위험 인자",
-      "50세 이상", "여성", "잦은 병원 방문", "안심 추구 행동", "사무직", "육체 노동", "불안 성향",
-      "생활 스트레스", "스트레스", "불안", "회피 행동", "직장 스트레스", "잘못된 자세",
-      "무거운 물건 들기", "직업적 노출", "열악한 주거환경", "위생 불량", "여행",
-      "키 크고 마른 체형 남성", "최근 질환", "격한 운동", "사고", "운동 습관",
-      "불량한 식습관", "운동 부족", "고지방 식이", "고지방 식습관", "코카인 사용", "좌식 생활",
-      "고령", "면역저하", "바이오매스 노출", "장기간 부동", "호르몬 요법", "암 치료",
-      "신경성 폭식증", "회복 탄력성 부족", "가족 스트레스", "신체활동 부족", "운동선수 활동",
-      "건강검진 미흡", "햇빛 노출 부족", "팔을 많이 쓰는 직업", "수면 부족", "정서적 스트레스",
-      "식습관", "찬 환경 노출", "뜨거운 음료 섭취", "비만", "야식", "가족 갈등",
-      "낮은 대처 능력", "감염자 접촉", "감염 노출", "특별한 요인 없음", "야외 노동",
-      "수분 부족", "전쟁 경험", "학대", "실직", "사회적 고립", "영양 불량", "늦은 출산",
-      "심혈관 검진 부족", "부인과 병력", "호르몬 치료", "노숙", "알코올 중독", "학대 경험",
-      "이차적 이득", "무거운 물건을 드는 직업", "알레르겐 노출", "간접흡연", "불법 약물 사용",
-      "55세 이상", "가족력", "풍토지역 거주", "과밀한 생활", "허약 상태", "식욕억제제",
-      "메탐페타민 사용", "최근 여행", "장거리 여행", "특별한 위험 요인 없음", "앉아 있는 직업"
-    ];
-
-    // 🔹 프롬프트 구성
-    const prompt = `
-    당신은 의료 전문가로서 사용자의 사회적 이력에서 **실제 문장 기반으로 연관된 요인만** 추출하는 AI입니다.
-    
-    ⚙️ 분석 대상:
-    ${JSON.stringify(socialInfo)}
-    
-    📘 사회적 이력 매핑 리스트 (이 목록에 포함된 단어만 사용할 수 있습니다):
-    ${socialHistoryMapping.join(", ")}
-    
-    📏 분석 규칙:
-
-    1️⃣ 반드시 아래 "사회적 이력 매핑 리스트"에 존재하는 항목 중에서만 선택하세요.  
-       - 리스트에 없는 단어나 새로운 키워드를 **절대로 생성하지 마세요.**  
-       - 만약 문맥상 맞는 단어가 리스트에 없으면 **출력에서 제외하세요.**
-
-    2️⃣ 여러 항목이 연관되어 있을 수 있습니다.  
-       예를 들어 "흡연을 자주 한다" → ["흡연", "폐질환 위험"]  
-       "운동을 거의 안 한다" → ["운동 부족", "신체활동 부족"]  
-       따라서 **한 문장에서 여러 키워드를 동시에 선택할 수 있습니다.**
-
-    3️⃣ **부정 표현(안 한다, 없음, 전혀, 비흡연, 비음주, 금연, 금주)** 이 포함된 경우,  
-       해당 요인과 관련된 키워드는 모두 제외합니다.  
-       예: "술은 아예 안 마신다" → 음주 관련 키워드 전부 제거
-
-    📤 출력 형식 (이 형식 외 텍스트는 포함하지 마세요):
-    {
-      "matchedKeywords": ["키워드1", "키워드2"]
-    }
-    `;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      console.error("❌ Gemini 호출 실패:", response.status);
-      return res.status(500).json({ error: "Gemini API 호출 실패" });
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-    const parsed = parseJsonResponse(text);
-    const matched = parsed.matchedKeywords || [];
-
-    if (matched.length === 0) {
-      console.log("사회적이력 키워드가 없습니다.");
-      return res.json({ matchedKeywords: [], diseases: [] });
-    }
-
-    // 🔹 Firestore 검색 (함수 내부)
-    const diseases = [];
-    for (const keyword of matched) {
-      const snapshot = await db
-        .collection("diseases_ko")
-        .where("사회적 이력", "array-contains", keyword)
-        .get();
-      snapshot.forEach((doc) => diseases.push({ id: doc.id, ...doc.data() }));
-    }
-
-    // 중복 제거
-    const unique = [
-      ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
-    ];
-
-    console.log("사회적이력 키워드:", matched, "개수:", matched.length);
-    console.log("사회적이력 질병 목록:", unique, "개수:", unique.length);
-
-    return res.json({ matchedKeywords: matched, diseases: unique });
-  } catch (error) {
-    console.error("❌ 사회적 이력 분석 오류:", error);
-    return res.status(500).json({ error: "사회적 이력 분석 실패" });
   }
 }
 
