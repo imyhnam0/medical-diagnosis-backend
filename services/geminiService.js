@@ -47,7 +47,6 @@ async function callGeminiWithRetry(prompt, { retries = 3, baseDelayMs = 3000 } =
 
   throw new Error("Gemini API 재시도가 모두 실패했습니다.");
 }
-
 // ✅ 사회적 이력 분석
 export async function analyzeSocialHistory(req, res) {
   try {
@@ -149,7 +148,113 @@ export async function analyzeSocialHistory(req, res) {
     return res.status(500).json({ error: "사회적 이력 분석 실패" });
   }
 }
+// ✅ 과거 질환 분석
+export async function analyzePastDiseases(req, res) {
+  const { pastDiseasesInput } = req.body;
 
+  const pastDiseaseMapping = [
+    "암", "항암 치료", "담도질환", "최근 위장관 감염", "B형/C형 간염", "알코올성 간질환", "만성 간염",
+    "알코올 중독", "다발성 근육통", "정신과 병력", "과잉 진료 경험", "경추 디스크 질환",
+    "이전 공황 발작", "기능성 위장관 증상", "불안장애", "반복적 긴장", "손상", "최근 운동", "바이러스 감염",
+    "반복적인 호흡기 감염", "COPD", "반복 감염", "소아 폐렴", "날음식 섭취", "풍토지역 여행", "천식",
+    "기흉 병력", "흉부 외상", "대상포진 후 신경통", "최근 과격한 운동", "외상", "담석", "이전 담도 산통",
+    "담석증", "비만", "만성 고혈압", "결합조직질환", "이엽성 대동맥판", "동맥류", "선천성 이엽성 판막",
+    "류머티즘 열", "고지혈증", "고혈압", "수두", "면역저하", "대상포진", "RA", "가족력", "만성 기관지염",
+    "흡연", "폐색전증", "심부정맥혈전증", "혈전성향", "유방암/폐암/림프종 방사선 치료", "위장관 시술",
+    "범불안장애", "당뇨", "협심증", "가족력 (HCM, 급사, 부정맥)", "골연화증", "저칼슘혈증",
+    "방사선 치료", "우울증", "만성 피로 증후군", "기능성 위장장애", "헬리코박터 감염", "NSAID 사용",
+    "GERD", "불안", "바렛 식도", "만성 불안", "가족 스트레스", "최근 바이러스 감염", "자가면역질환",
+    "심근경색 후 증후군", "색전증 병력", "심장종양 가족력", "관상동맥질환", "심근경색", "판막질환",
+    "심낭염", "심장수술", "열 노출", "탈수", "심각한 외상 경험", "주요 우울 삽화", "식도열공 탈장",
+    "위축성 위염", "BRCA 유전자 변이", "호르몬 노출", "선천성 심장질환", "급사 가족력", "혈관연축 성향",
+    "자궁내막증", "자궁근종", "야외 노출", "영양실조", "악성 종양", "최근 암 치료", "정신과 질환",
+    "선천성 척추 기형", "소아기 천식", "아토피", "알레르기 비염", "약물중독", "다른 부위의 파제트병",
+    "잠복결핵", "HIV", "밀접 접촉", "장기간 흡연", "폐렴", "흡인", "구강 위생 불량", "선천성 심질환",
+    "최근 상기도 감염", "만성 폐질환", "최근 수술", "폐 결절", "심방세동 고주파 절제술", "폐정맥 폐쇄",
+    "호흡기 감염", "결핵", "추간판 질환", "척추 퇴행성 질환"
+  ];
+
+  // 🔹 Gemini 프롬프트 구성
+  const prompt = `
+  당신은 의료 전문가로서 사용자의 과거 질환 이력에서 연관된 키워드를 찾는 AI입니다.
+
+  규칙:
+  1️⃣ 사용자 입력에서 언급된 질병, 증상, 상태를 모두 찾아내세요.
+  2️⃣ 주어진 "과거 질환 이력 매핑" 리스트에서 사용자 입력과 연관이 있다고 생각하는 키워드들을 찾아주세요.
+  3️⃣ 결과는 JSON 형태로 출력하세요.
+
+  사용자 입력: "${pastDiseasesInput}"
+
+  과거 질환 이력 매핑 리스트:
+  ${pastDiseaseMapping.join(", ")}
+
+  출력 형식:
+  {
+    "matchedKeywords": ["매칭된 키워드1", "매칭된 키워드2"]
+  }
+  `;
+
+  try {
+    // 🔸 Gemini API 호출
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("❌ Gemini 호출 실패:", response.status);
+      return res.status(500).json({ error: "Gemini API 호출 실패" });
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const parsed = parseJsonResponse(text);
+    const matched = parsed.matchedKeywords || [];
+
+    if (matched.length === 0) {
+      console.log("과거질환이력 키워드가 없습니다.");
+      return res.json({ matchedKeywords: [], diseases: [] });
+    }
+
+    // 🔹 Firestore 검색 (함수 내부)
+    const diseases = [];
+    for (const keyword of matched) {
+      const snapshot = await db
+        .collection("diseases_ko")
+        .where("과거 질환 이력", "array-contains", keyword)
+        .get();
+      snapshot.forEach((doc) => diseases.push({ id: doc.id, ...doc.data() }));
+    }
+
+    // 중복 제거
+    const unique = [
+      ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
+    ];
+
+    // 키워드와 나온 질병들 log로 출력
+    console.log("과거질환이력 키워드:", matched, "개수:", matched.length);
+    console.log(
+      "과거질환이력 질병 id, 과거 질환 이력 목록:",
+      unique.map((d) => ({
+        id: d.id,
+        "과거 질환 이력": d["과거 질환 이력"],
+      })),
+      "개수:",
+      unique.length
+    );
+
+    return res.json({ matchedKeywords: matched, diseases: unique });
+  } catch (error) {
+    console.error("❌ 과거 질환 분석 오류:", error);
+    return res.status(500).json({ error: "과거 질환 분석 실패" });
+  }
+}
 // ✅ 흉통인지 아닌지 분석 
 export async function analyzeChestPain(req, res) {
   const { userInput } = req.body;
@@ -316,104 +421,94 @@ export async function analyzeChestPain(req, res) {
     return res.status(500).json({ error: "서버 내부 오류" });
   }
 }
-
-// ✅ Gemini를 사용해 질병 정보 요약
-export async function getDiseaseInfo(req, res) {
-    try {
-      const { diseaseName } = req.body;
-      if (!diseaseName || diseaseName.trim() === "") {
-        return res.status(400).json({ error: "질병명이 비어 있습니다." });
-      }
-  
-      const prompt = `
-  당신은 의료 전문가입니다. 다음 질병에 대해 간단하고 정확한 정보를 제공해주세요.
-  
-  질병명: ${diseaseName}
-  
-  다음 JSON 형식으로만 응답해주세요:
-  {
-    "description": "질병에 대한 간단한 설명 (2줄 이내)",
-    "prognosis": "예후 및 주의사항에 대한 설명 (3줄 이내)"
-  }
-  
-  의료적 정확성을 유지하면서 일반인이 이해하기 쉽게 작성해주세요.
-  `;
-  
-      const data = await callGeminiWithRetry(prompt);
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  
-      // 🔹 JSON 파싱
-      let parsed;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = { description: "정보를 가져올 수 없습니다.", prognosis: "예후 정보를 가져올 수 없습니다." };
-      }
-  
-      console.log("✅ 질병 정보:", diseaseName, parsed);
-  
-      return res.json(parsed);
-    } catch (error) {
-      console.error("❌ 질병 정보 분석 오류:", error);
-      return res.status(500).json({ error: "질병 정보 분석 실패" });
-    }
-  }
-  
-
 // ✅ 증상 추출 API
 export async function analyzeSymptoms(req, res) {
-    try {
-      const { userInput, symptomCategories } = req.body;
-  
-      if (!userInput || userInput.trim() === "") {
-        return res.status(400).json({ error: "userInput이 비어 있습니다." });
-      }
-  
-      // 🔹 Flutter의 symptomCategories → values 확장
-      const allSymptoms = Object.values(symptomCategories || {}).flat();
-  
-      // 🔹 Gemini 프롬프트 구성
-      const prompt = `
-      당신은 의료 전문가로서 사용자의 문장에서 증상을 추출하는 AI입니다.  
-      주어진 "증상 리스트"를 우선적으로 참고하되,  
-      만약 사용자의 표현이 리스트에 없는 새로운 증상이라면 의미를 보존한 자연스러운 이름으로 직접 생성해도 됩니다.
-  
-      규칙:
-      1️⃣ 사용자의 문장에서 의학적으로 의미 있는 모든 증상을 찾아내세요.  
-      2️⃣ "증상 리스트"에 존재하는 항목이 있으면 그대로 사용하세요.  
-      3️⃣ 비슷한 표현이 여러 증상과 연관된다면 모두 포함하세요.  
-          (예: "가슴이 아프다" → "흉통, 설명되지 않는 흉통, 갑작스러운 흉통")
-      4️⃣ 존재하지 않으면 사용자의 문맥에 맞게 새로운 증상명을 간단하게 만들어 추가하세요.  
-          - 예: "머리가 아파요" → "두통"
-          - 예: "팔꿈치가 아파요" → "팔꿈치 통증"
-          - 예: "가슴이 조여요" → "흉통"
-      5️⃣ 결과는 쉼표(,)로 구분된 증상명 리스트 형태로만 출력합니다.  
-      6️⃣ 불필요한 설명, 문장, 해석은 포함하지 마세요.  
-      7️⃣ 출력 예시: "흉통, 두통, 팔꿈치 통증"
-  
-      사용자 입력:
-      "${userInput}"
-  
-      증상 리스트:
-      ${allSymptoms.join(", ")}
-      `;
-  
-      // ✅ Gemini API 호출
+  try {
+    const {
+      question,
+      answer,
+      symptomCategories,
+      previousSymptoms = [],
+    } = req.body;
+
+    const effectiveAnswer = (answer ?? "").trim();
+    if (!effectiveAnswer) {
+      return res.status(400).json({ error: "answer가 비어 있습니다." });
+    }
+
+    const effectiveQuestion = (question ?? req.body.currentQuestion ?? "")
+      .toString()
+      .trim();
+
+    const allSymptoms = Object.values(symptomCategories || {}).flat();
+    const history = Array.isArray(previousSymptoms)
+      ? previousSymptoms.filter((s) => typeof s === "string" && s.trim().length > 0)
+      : [];
+
+    const prompt = `
+당신은 환자를 상담하는 의학 전문의입니다.
+아래 질문과 환자의 답변을 읽고, 의학적으로 의미 있는 증상을 모두 찾아 주세요.
+
+🩺 현재 질문: "${effectiveQuestion}"
+💬 환자 답변: "${effectiveAnswer}"
+📁 지금까지 확보된 증상: ${history.length > 0 ? history.join(", ") : "없음"}
+
+📚 참고 증상 리스트 (반드시 리스트에 있는 것만 선택해주세요):
+${allSymptoms.join(", ")}
+
+규칙:
+1️⃣ 환자의 답변에서 추론 가능한 모든 증상을 JSON의 "matchedSymptoms" 배열에 담으세요. 
+2️⃣ 이미 확보된 증상(history)은 포함하지 않습니다.
+3️⃣ 증상명은 한국어로 간결하게 작성하세요. (예: "가슴 통증", "호흡곤란")
+4️⃣ 환자가 입력한 답변을 보고 추가적인 질문을 "nextQuestion"에 의학적으로 자연스러운 한국어 질문을 작성하세요.
+5️⃣ 추가 설명이나 마크다운 없이 아래 JSON 형식만 반환하세요.
+
+출력 형식:
+{
+  "matchedSymptoms": ["증상1", "증상2"],
+  "nextQuestion": "의학적으로 필요한 다음 질문 혹은 빈 문자열"
+}
+⚠️ 주의: 결과를 코드블록(\`\`\`json ... \`\`\`)으로 감싸지 마세요.
+`;
+
     const data = await callGeminiWithRetry(prompt);
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
 
-    const rawText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+    const parsed = parseJsonResponse(text) || {};
+    let matchedSymptoms = Array.isArray(parsed.matchedSymptoms)
+      ? parsed.matchedSymptoms
+      : [];
 
-    // 쉼표 기준 분리 후 중복 제거
-    const symptoms = rawText
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    // 모델이 규격을 지키지 않았을 때 대비
+    if (matchedSymptoms.length === 0 && typeof text === "string") {
+      const matchedBlock = text.match(/"matchedSymptoms"\s*:\s*\[([\s\S]*?)\]/);
+      if (matchedBlock?.[1]) {
+        matchedSymptoms = matchedBlock[1]
+          .split(",")
+          .map((s) => s.replace(/["\n\r]/g, "").trim())
+          .filter((s) => s.length > 0);
+      } else {
+        matchedSymptoms = [];
+      }
+    }
 
-    const uniqueSymptoms = [...new Set(symptoms)];
+    const uniqueSymptoms = [
+      ...new Set(
+        matchedSymptoms
+          .map((s) => s.toString().trim())
+          .filter((s) => s.length > 0)
+      ),
+    ];
+
+    const nextQuestion =
+      typeof parsed.nextQuestion === "string"
+        ? parsed.nextQuestion.trim()
+        : "";
+
     console.log("🩺 추출된 증상:", uniqueSymptoms);
-
-    // ✅ Firestore에서 관련 질병 검색
+    console.log("🧠 다음 질문:", nextQuestion);
+    // Firestore 검색
     const diseases = [];
     for (const symptom of uniqueSymptoms) {
       const snapshot = await db
@@ -425,125 +520,24 @@ export async function analyzeSymptoms(req, res) {
         diseases.push({ id: doc.id, ...doc.data() });
       });
     }
-
-    // 🔹 중복 제거
+    // ✅ Firestore 중복 제거
     const uniqueDiseases = [
       ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
     ];
 
     console.log("🧬 관련 질병 수:", uniqueDiseases.length);
 
-    // ✅ 최종 응답
+
     return res.json({
       matchedSymptoms: uniqueSymptoms,
+      nextQuestion,
       diseases: uniqueDiseases,
     });
-    } catch (error) {
-      console.error("💥 analyzeSymptoms 오류:", error);
-      return res.status(500).json({ error: "서버 내부 오류" });
-    }
-  }
-
-// ✅ 과거 질환 분석
-export async function analyzePastDiseases(req, res) {
-  const { pastDiseasesInput } = req.body;
-
-  const pastDiseaseMapping = [
-    "암", "항암 치료", "담도질환", "최근 위장관 감염", "B형/C형 간염", "알코올성 간질환", "만성 간염",
-    "알코올 중독", "다발성 근육통", "정신과 병력", "과잉 진료 경험", "경추 디스크 질환",
-    "이전 공황 발작", "기능성 위장관 증상", "불안장애", "반복적 긴장", "손상", "최근 운동", "바이러스 감염",
-    "반복적인 호흡기 감염", "COPD", "반복 감염", "소아 폐렴", "날음식 섭취", "풍토지역 여행", "천식",
-    "기흉 병력", "흉부 외상", "대상포진 후 신경통", "최근 과격한 운동", "외상", "담석", "이전 담도 산통",
-    "담석증", "비만", "만성 고혈압", "결합조직질환", "이엽성 대동맥판", "동맥류", "선천성 이엽성 판막",
-    "류머티즘 열", "고지혈증", "고혈압", "수두", "면역저하", "대상포진", "RA", "가족력", "만성 기관지염",
-    "흡연", "폐색전증", "심부정맥혈전증", "혈전성향", "유방암/폐암/림프종 방사선 치료", "위장관 시술",
-    "범불안장애", "당뇨", "협심증", "가족력 (HCM, 급사, 부정맥)", "골연화증", "저칼슘혈증",
-    "방사선 치료", "우울증", "만성 피로 증후군", "기능성 위장장애", "헬리코박터 감염", "NSAID 사용",
-    "GERD", "불안", "바렛 식도", "만성 불안", "가족 스트레스", "최근 바이러스 감염", "자가면역질환",
-    "심근경색 후 증후군", "색전증 병력", "심장종양 가족력", "관상동맥질환", "심근경색", "판막질환",
-    "심낭염", "심장수술", "열 노출", "탈수", "심각한 외상 경험", "주요 우울 삽화", "식도열공 탈장",
-    "위축성 위염", "BRCA 유전자 변이", "호르몬 노출", "선천성 심장질환", "급사 가족력", "혈관연축 성향",
-    "자궁내막증", "자궁근종", "야외 노출", "영양실조", "악성 종양", "최근 암 치료", "정신과 질환",
-    "선천성 척추 기형", "소아기 천식", "아토피", "알레르기 비염", "약물중독", "다른 부위의 파제트병",
-    "잠복결핵", "HIV", "밀접 접촉", "장기간 흡연", "폐렴", "흡인", "구강 위생 불량", "선천성 심질환",
-    "최근 상기도 감염", "만성 폐질환", "최근 수술", "폐 결절", "심방세동 고주파 절제술", "폐정맥 폐쇄",
-    "호흡기 감염", "결핵", "추간판 질환", "척추 퇴행성 질환"
-  ];
-
-  // 🔹 Gemini 프롬프트 구성
-  const prompt = `
-  당신은 의료 전문가로서 사용자의 과거 질환 이력에서 연관된 키워드를 찾는 AI입니다.
-
-  규칙:
-  1️⃣ 사용자 입력에서 언급된 질병, 증상, 상태를 모두 찾아내세요.
-  2️⃣ 주어진 "과거 질환 이력 매핑" 리스트에서 사용자 입력과 연관이 있다고 생각하는 키워드들을 찾아주세요.
-  3️⃣ 결과는 JSON 형태로 출력하세요.
-
-  사용자 입력: "${pastDiseasesInput}"
-
-  과거 질환 이력 매핑 리스트:
-  ${pastDiseaseMapping.join(", ")}
-
-  출력 형식:
-  {
-    "matchedKeywords": ["매칭된 키워드1", "매칭된 키워드2"]
-  }
-  `;
-
-  try {
-    // 🔸 Gemini API 호출
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      console.error("❌ Gemini 호출 실패:", response.status);
-      return res.status(500).json({ error: "Gemini API 호출 실패" });
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-    const parsed = parseJsonResponse(text);
-    const matched = parsed.matchedKeywords || [];
-
-    if (matched.length === 0) {
-      console.log("과거질환이력 키워드가 없습니다.");
-      return res.json({ matchedKeywords: [], diseases: [] });
-    }
-
-    // 🔹 Firestore 검색 (함수 내부)
-    const diseases = [];
-    for (const keyword of matched) {
-      const snapshot = await db
-        .collection("diseases_ko")
-        .where("과거 질환 이력", "array-contains", keyword)
-        .get();
-      snapshot.forEach((doc) => diseases.push({ id: doc.id, ...doc.data() }));
-    }
-
-    // 중복 제거
-    const unique = [
-      ...new Map(diseases.map((d) => [d["질환명"], d])).values(),
-    ];
-
-    // 키워드와 나온 질병들 log로 출력
-    console.log("과거질환이력 키워드:", matched, "개수:", matched.length);
-    console.log("과거질환이력 질병 목록:", unique, "개수:", unique.length);
-
-    return res.json({ matchedKeywords: matched, diseases: unique });
   } catch (error) {
-    console.error("❌ 과거 질환 분석 오류:", error);
-    return res.status(500).json({ error: "과거 질환 분석 실패" });
+    console.error("💥 analyzeSymptoms 오류:", error);
+    return res.status(500).json({ error: "서버 내부 오류" });
   }
-}
-
+}  
 // ✅ 악화 요인 분석 및 Firestore 검색
 export async function analyzeAggravation(req, res) {
     try {
@@ -764,3 +758,60 @@ export async function analyzeRiskFactor(req, res) {
       return res.status(500).json({ error: "위험 요인 분석 실패" });
     }
   }
+  // ✅ Gemini를 사용해 질병 정보 요약
+export async function getDiseaseInfo(req, res) {
+  try {
+    const { diseaseName } = req.body;
+    if (!diseaseName || diseaseName.trim() === "") {
+      return res.status(400).json({ error: "질병명이 비어 있습니다." });
+    }
+
+    const prompt = `
+당신은 의료 전문가입니다. 다음 질병에 대해 간단하고 정확한 정보를 제공해주세요.
+
+질병명: ${diseaseName}
+
+다음 JSON 형식으로만 응답해주세요:
+{
+  "description": "질병에 대한 간단한 설명 (2줄 이내)",
+  "prognosis": "예후 및 주의사항에 대한 설명 (3줄 이내)"
+}
+
+의료적 정확성을 유지하면서 일반인이 이해하기 쉽게 작성해주세요.
+`;
+
+    const data = await callGeminiWithRetry(prompt);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    // 🔹 JSON 파싱 (여유 처리)
+    let parsed = parseJsonResponse(text);
+    if (!parsed || typeof parsed !== "object") {
+      try {
+        parsed = JSON.parse(text);
+      } catch (error) {
+        console.warn("⚠️ Gemini 질병 정보 JSON 파싱 실패:", error.message);
+        console.warn("📄 원본 응답 텍스트:", text);
+        parsed = {
+          description: "정보를 가져올 수 없습니다.",
+          prognosis: "예후 정보를 가져올 수 없습니다.",
+        };
+      }
+    }
+
+    parsed.description =
+      typeof parsed.description === "string" && parsed.description.trim() !== ""
+        ? parsed.description.trim()
+        : "정보를 가져올 수 없습니다.";
+    parsed.prognosis =
+      typeof parsed.prognosis === "string" && parsed.prognosis.trim() !== ""
+        ? parsed.prognosis.trim()
+        : "예후 정보를 가져올 수 없습니다.";
+
+    console.log("✅ 질병 정보:", diseaseName, parsed);
+
+    return res.json(parsed);
+  } catch (error) {
+    console.error("❌ 질병 정보 분석 오류:", error);
+    return res.status(500).json({ error: "질병 정보 분석 실패" });
+  }
+}

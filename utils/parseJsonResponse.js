@@ -1,28 +1,34 @@
-// utils/parseJsonResponse.js
-
-// JSON 파싱 함수
 export function parseJsonResponse(text) {
-    try {
-      let cleanText = text;
-      // 마크다운 코드블록 제거
-      if (cleanText.includes("```json")) {
-        cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
-      }
-  
-      // JSON 객체만 추출 (정규식)
-      const jsonPattern = /\{[\s\S]*\}/m;
-      const match = cleanText.match(jsonPattern);
-  
-      if (match) {
-        return JSON.parse(match[0]);
-      }
-  
-      // 정규식으로 못 찾으면 전체 문자열 파싱 시도
-      return JSON.parse(cleanText);
-    } catch (e) {
-      console.error("❌ JSON 파싱 실패:", e.message);
-      console.error("원본 텍스트:", text);
-      return { matchedKeywords: [], analysis: "JSON 파싱 실패" };
+  if (typeof text !== "string") return null;
+
+  try {
+    let cleanText = text.trim();
+
+    // ✅ 코드블록(```json ... ````) 완전 제거
+    const fencedMatch = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fencedMatch) {
+      cleanText = fencedMatch[1].trim();
+    } else {
+      cleanText = cleanText.replace(/```/g, "").trim();
     }
+
+    // ✅ JSON 객체({ ... }) 전체를 줄바꿈 포함해서 정확히 추출
+    // 이전: const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    const jsonMatch = cleanText.match(/\{[\s\S]*?\}/m); // <-- 수정된 부분
+
+    if (jsonMatch) {
+      cleanText = jsonMatch[0]
+        .replace(/\n/g, "") // 개행 제거
+        .replace(/\r/g, "")
+        .replace(/\t/g, "")
+        .trim();
+    }
+
+    // ✅ JSON 파싱
+    return JSON.parse(cleanText);
+  } catch (error) {
+    console.error("❌ JSON 파싱 실패:", error.message);
+    console.error("원본 텍스트:", text);
+    return null;
   }
-  
+}
