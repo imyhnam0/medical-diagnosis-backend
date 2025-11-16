@@ -10,7 +10,6 @@ import analyzeRoutes from "./routes/analyzeRoutes.js"; // ✅ 라우터 불러�
 
 // ✅ 1. .env 로드
 dotenv.config();
-console.log("✅ GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
 
 // ✅ 2. Express 앱 설정"type": "module"
 const app = express();
@@ -39,9 +38,8 @@ try {
 
 // ✅ 4. Firestore 인스턴스 및 Gemini API 키
 export const db = admin.firestore();
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// ✅ 5. 기본 라우트
+// 서버가 떠있는지 확인하기 위함
 app.get("/", (req, res) => {
   console.log("📨 루트 경로 요청 수신");
   res.send("✅ Medical Backend Server Running!");
