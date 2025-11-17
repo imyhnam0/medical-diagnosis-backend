@@ -82,7 +82,7 @@ const response = await ai.models.generateContent({
     validKeywords.forEach(kw => diseaseManager.addKeyword(kw));
 
     console.log("☑️ 누적된 증상 키워드:", diseaseManager.getAllKeywords());
-    const LAST_INDEX = 4; // TODO: UI에 맞게 변경해야함 (질문 개수 - 1)
+    const LAST_INDEX = 3; // TODO: UI에 맞게 변경해야함 (질문 개수 - 1)
     if (questionIndex === LAST_INDEX) {
       const allKeywords = diseaseManager.getAllKeywords();
       console.log("🔥 최종 키워드:", allKeywords);

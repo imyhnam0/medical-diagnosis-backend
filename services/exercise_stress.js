@@ -73,23 +73,7 @@ Return only a JSON array as output.
 `;
       keywordList = STRESS_KEYWORDS;
       filterList = STRESS_KEYWORDS;
-    } else if (questionIndex === 2) {
-      // Question 3 (stress response): Extract stress coping/response keywords
-      systemPrompt = `
-The following answer is to the question: "How do you usually respond to stress? Do you try to solve it, or do you avoid it or become lethargic?"
-Read the answer and extract all keywords from the list below that best match the coping, avoidance, or emotional/psychological response described.
-Return only the relevant keywords from the list below, as a JSON array.
-
-Stress keywords: ${STRESS_KEYWORDS.join(", ")}
-
-Format: ["keyword1", "keyword2"]
-Return only a JSON array as output.
-`;
-      keywordList = STRESS_KEYWORDS;
-      filterList = STRESS_KEYWORDS;
     }
-
-
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: [{ parts: [{ text: answer }] }],
@@ -123,7 +107,7 @@ Return only a JSON array as output.
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());
 
     // 마지막 질문 index에서만 전체 대상 처리
-    const LAST_INDEX = 2; // 예: 세 번째(2번 index) 질문 끝나면 최종 처리
+    const LAST_INDEX = 1; // 예: 세 번째(2번 index) 질문 끝나면 최종 처리
     if (questionIndex === LAST_INDEX) {
       // 누적된 운동+스트레스 모두 합쳐진 키워드!
       const allKeywords = diseaseManager.getAllKeywords();
