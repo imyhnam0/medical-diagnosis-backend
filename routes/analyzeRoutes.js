@@ -1,6 +1,9 @@
 import express from "express";
 import {
   getDiseaseInfo,
+  getTopDiseases,
+  getAllDiseases,
+  resetDiagnosis,
 } from "../services/geminiService.js";
 import { analyzeAgeBmiGender } from "../services/age_bmi_gender.js";
 import { analyzeDrinkingSmoking } from "../services/drinking_smoking.js";
@@ -19,6 +22,9 @@ router.post("/riskfactor", analyzeRiskFactor);
 router.post("/chestpain", analyzeChestPain);
 router.post("/symptoms", analyzeSymptoms);
 router.post("/disease-info", getDiseaseInfo);
+router.get("/top-diseases", getTopDiseases);
+router.get("/all-diseases", getAllDiseases);
+router.post("/reset-diagnosis", resetDiagnosis);
 router.post("/age-bmi-gender", analyzeAgeBmiGender);
 router.post("/drinking-smoking", analyzeDrinkingSmoking);
 router.post("/job", analyzeJob);

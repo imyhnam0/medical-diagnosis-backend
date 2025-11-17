@@ -10,15 +10,18 @@ import { GEMINI_API_KEY } from "../config/geminiConfig.js";
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 // 운동과 스트레스관련 키워드
-const EXERCISE_STRESS_KEYWORDS = [
+const EXERCISE_KEYWORDS = [
   "운동 습관","운동 부족","신체활동 부족",
-  "격한 운동","불안 성향","생활 스트레스",
-  "스트레스","불안","회피 행동","최근 운동",
-  "직장 스트레스","정서적 스트레스","가족 스트레스",
-  "가족 갈등","낮은 대처 능력","회복 탄력성 부족",
-  "사회적 고립","학대","학대 경험",
+  "격한 운동"
+];
+
+const STRESS_KEYWORDS = [
+  "불안 성향","생활 스트레스","스트레스","불안","회피 행동",
+  "직장 스트레스","정서적 스트레스","가족 스트레스","가족 갈등",
+  "낮은 대처 능력","회복 탄력성 부족","사회적 고립","학대","학대 경험",
   "실직","전쟁 경험","노숙",
 ];
+
 
 export async function analyzeExerciseStress(req, res) {
   try {
@@ -36,15 +39,56 @@ export async function analyzeExerciseStress(req, res) {
       });
     }
 
-    // 🔹 AI에게 보낼 프롬프트
-    const systemPrompt = `
-User will input their daily exercise and stress. Extract the keywords related to the exercise and stress.
-Keywords are from ${EXERCISE_STRESS_KEYWORDS.join(", ")}. Select one or more keywords.
-Extract all keywords related to the exercise and stress.
-You can assume that the user's exercise and stress is related to the keywords.
-Please extract all keywords related to the exercise and stress.
-Please ONLY extract keywords from ${EXERCISE_STRESS_KEYWORDS.join(", ")}.
+    // 각 질문 index별로 키워드 분리저장 로직
+    let systemPrompt = "";
+    let keywordList = [];
+    let filterList = [];
+
+    if (questionIndex === 0) {
+      // 운동 관련 프롬프트
+      // Question 1 (exercise): Prompt to extract only relevant exercise keywords
+      systemPrompt = `
+The following answer is to the question: "How much do you usually exercise or do physical activity in your daily life?"
+Carefully read the answer and extract all keywords that best match the exercise-related keywords listed below, based on the report.
+Return ONLY the relevant keywords from the following list, as many as appropriate, in a JSON array called "keywords".
+
+Exercise keywords: ${EXERCISE_KEYWORDS.join(", ")}
+
+Format: ["keyword1", "keyword2"]
+Return only a JSON array as output.
 `;
+      keywordList = EXERCISE_KEYWORDS;
+      filterList = EXERCISE_KEYWORDS;
+    } else if (questionIndex === 1) {
+      // Question 2 (stress experience): Extract relevant stress-related keywords
+      systemPrompt = `
+The following answer is to the question: "Have you had any stressful experiences recently? Could you describe them in detail?"
+Analyze the response and, based on the content, select all keywords that correspond to the stress-related keywords below.
+Return only a JSON array of all relevant keywords matching the list below. Multiple selections are possible.
+
+Stress keywords: ${STRESS_KEYWORDS.join(", ")}
+
+Format: ["keyword1", "keyword2"]
+Return only a JSON array as output.
+`;
+      keywordList = STRESS_KEYWORDS;
+      filterList = STRESS_KEYWORDS;
+    } else if (questionIndex === 2) {
+      // Question 3 (stress response): Extract stress coping/response keywords
+      systemPrompt = `
+The following answer is to the question: "How do you usually respond to stress? Do you try to solve it, or do you avoid it or become lethargic?"
+Read the answer and extract all keywords from the list below that best match the coping, avoidance, or emotional/psychological response described.
+Return only the relevant keywords from the list below, as a JSON array.
+
+Stress keywords: ${STRESS_KEYWORDS.join(", ")}
+
+Format: ["keyword1", "keyword2"]
+Return only a JSON array as output.
+`;
+      keywordList = STRESS_KEYWORDS;
+      filterList = STRESS_KEYWORDS;
+    }
+
 
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -69,20 +113,21 @@ Please ONLY extract keywords from ${EXERCISE_STRESS_KEYWORDS.join(", ")}.
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
     const { keywords = [] } = parseJsonResponse(rawText);
 
-    // 유효한 키워드만 필터링 (EXERCISE_STRESS_KEYWORDS 목록에 있는 것만)
+    // 질문별 필터 리스트로만 필터
     const validKeywords = keywords.filter(kw => 
-      EXERCISE_STRESS_KEYWORDS.includes(kw)
+      filterList.includes(kw)
     );
-    // 🔥 키워드 누적 저장
+    // 누적 저장 (합치기 위해 계속 저장)
     validKeywords.forEach(kw => diseaseManager.addKeyword(kw));
 
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());
 
-    // TODO: 질문 개수에 맞게 LAST_INDEX를 맞추세요
+    // 마지막 질문 index에서만 전체 대상 처리
     const LAST_INDEX = 2; // 예: 세 번째(2번 index) 질문 끝나면 최종 처리
     if (questionIndex === LAST_INDEX) {
+      // 누적된 운동+스트레스 모두 합쳐진 키워드!
       const allKeywords = diseaseManager.getAllKeywords();
-      console.log("🔥 최종 키워드:", allKeywords);
+      console.log("🔥 최종 키워드(운동+스트레스 합친):", allKeywords);
 
       for (const keyword of allKeywords) {
         const snapshot = await db
@@ -101,7 +146,7 @@ Please ONLY extract keywords from ${EXERCISE_STRESS_KEYWORDS.join(", ")}.
       const rawScores = diseaseManager.getRawScores();
       console.log("질환별 rawScores:", rawScores);
 
-      diseaseManager.clearKeywords(); // 🔥 Reset for next user
+      diseaseManager.clearKeywords(); // 🔥 다음 사용자 위해 리셋
     }
 
     // 🔹 Flutter로 응답
@@ -114,4 +159,3 @@ Please ONLY extract keywords from ${EXERCISE_STRESS_KEYWORDS.join(", ")}.
     return res.status(500).json({ error: "분석 실패", details: error.message });
   }
 }
-

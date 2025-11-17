@@ -82,9 +82,30 @@ const response = await ai.models.generateContent({
     validKeywords.forEach(kw => diseaseManager.addKeyword(kw));
 
     console.log("☑️ 누적된 증상 키워드:", diseaseManager.getAllKeywords());
+    const LAST_INDEX = 4; // TODO: UI에 맞게 변경해야함 (질문 개수 - 1)
+    if (questionIndex === LAST_INDEX) {
+      const allKeywords = diseaseManager.getAllKeywords();
+      console.log("🔥 최종 키워드:", allKeywords);
 
-    // (증상 기반 결과 계산 로직이 필요한 경우, 여기에 추가)
-    // 예시: 증상 키워드 기반 질환 도출 등
+      for (const keyword of allKeywords) {
+        const snapshot = await db
+          .collection("diseases_ko")
+          .where("증상", "array-contains", keyword)
+          .get();
+
+        snapshot.forEach(doc => {
+          const diseaseName = doc.data()?.["질환명"];
+          if (diseaseName) {
+            diseaseManager.addScore(diseaseName, 1);
+          }
+        });
+      }
+
+      const rawScores = diseaseManager.getRawScores();
+      console.log("질환별 rawScores:", rawScores);
+
+      diseaseManager.clearKeywords(); // 🔥 다음 사용자 위해 리셋
+    }
 
     // 🔹 응답 반환
     return res.json({

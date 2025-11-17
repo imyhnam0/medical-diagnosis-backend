@@ -35,10 +35,10 @@ class DiseaseDataManager {
         .sort((a, b) => b.score - a.score);
     }
   
-    // 🔹 가장 점수 높은 질병 1개 반환
-    getTopDisease() {
+    // 🔹 가장 점수 높은 질병 2개 반환
+    getTopDiseases(count = 2) {
       const ranked = this.getRankedScores();
-      return ranked.length > 0 ? ranked[0] : null;
+      return ranked.slice(0, count);
     }
   
     // 🔹 점수 디버깅용

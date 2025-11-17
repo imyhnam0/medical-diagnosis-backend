@@ -95,7 +95,7 @@ const response = await ai.models.generateContent({
 
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());
 
-    const LAST_INDEX = 2; // TODO: UI에 맞게 변경해야함
+    const LAST_INDEX = 1; // TODO: UI에 맞게 변경해야함
     if (questionIndex === LAST_INDEX) {
       const allKeywords = diseaseManager.getAllKeywords();
       console.log("🔥 최종 위험 인자 키워드:", allKeywords);
@@ -103,7 +103,7 @@ const response = await ai.models.generateContent({
       for (const keyword of allKeywords) {
         const snapshot = await db
           .collection("diseases_ko")
-          .where("사회적 이력", "array-contains", keyword)
+          .where("위험 요인", "array-contains", keyword)
           .get();
 
         snapshot.forEach(doc => {
