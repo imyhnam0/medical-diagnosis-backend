@@ -4,8 +4,7 @@ import { diseaseManager } from "./DiseaseDataManager.js";
 import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL } from "../config/geminiConfig.js";
-import { GEMINI_API_KEY } from "../config/geminiConfig.js";
+import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -58,7 +57,7 @@ Please ONLY extract keywords from ${CHEST_PAIN_KEYWORDS.join(", ")}.
 `;
 
     // AI 호출
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback({
       model: GEMINI_MODEL,
       contents: [{ parts: [{ text: userInput }] }],
       config: {

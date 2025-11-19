@@ -2,7 +2,7 @@ import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { db } from "../server.js";
 import { GEMINI_API_KEY } from "../config/geminiConfig.js";
-import { GEMINI_MODEL } from "../config/geminiConfig.js";
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 import { GoogleGenAI } from "@google/genai";
 import { diseaseManager } from "./DiseaseDataManager.js";
 
@@ -99,7 +99,7 @@ export async function getDiseaseInfo(req, res) {
 `;
 
     // Gemini로 질병 정보 요약 응답 받기
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback({
       model: GEMINI_MODEL,
       contents: [{ parts: [{ text: diseaseName }] }],
       config: {

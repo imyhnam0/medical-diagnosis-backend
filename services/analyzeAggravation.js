@@ -4,7 +4,7 @@ import { diseaseManager } from "./DiseaseDataManager.js";
 import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY } from "../config/geminiConfig.js";
+import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -55,7 +55,7 @@ Extract all keywords related to aggravation factors only.
 Please ONLY extract keywords from ${AGGRAVATION_KEYWORDS.join(", ")}.
 `;
 
-const response = await ai.models.generateContent({
+const response = await generateContentWithFallback({
     model: GEMINI_MODEL,
     contents: [{ parts: [{ text: answer }] }],
     config: {
