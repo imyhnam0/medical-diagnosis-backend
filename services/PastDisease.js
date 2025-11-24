@@ -88,7 +88,7 @@ Please ONLY extract keywords from ${PAST_DISEASE_KEYWORDS.join(", ")}.
 
     console.log("☑️ 누적된 (과거 질환) 키워드:", diseaseManager.getAllKeywords());
 
-    const LAST_INDEX = 3; // TODO: UI에 맞게 변경
+    const LAST_INDEX = 0; // TODO: UI에 맞게 변경
     if (questionIndex === LAST_INDEX) {
       const allKeywords = diseaseManager.getAllKeywords();
       console.log("🔥 최종 과거 질환 키워드:", allKeywords);

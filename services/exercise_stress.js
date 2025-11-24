@@ -106,7 +106,7 @@ Return only a JSON array as output.
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());
 
     // 마지막 질문 index에서만 전체 대상 처리
-    const LAST_INDEX = 1; // 예: 세 번째(2번 index) 질문 끝나면 최종 처리
+    const LAST_INDEX = 0; // 예: 세 번째(2번 index) 질문 끝나면 최종 처리
     if (questionIndex === LAST_INDEX) {
       // 누적된 운동+스트레스 모두 합쳐진 키워드!
       const allKeywords = diseaseManager.getAllKeywords();

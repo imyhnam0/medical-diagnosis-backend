@@ -6,6 +6,7 @@ import admin from "firebase-admin";
 import fs from "fs";
 import path from "path";
 import analyzeRoutes from "./routes/analyzeRoutes.js"; // ✅ 라우터 불러오기
+import { saveDemoRequest } from "./services/demoRequestService.js"; // ✅ 데모 요청 서비스 불러오기
 
 
 // ✅ 1. .env 로드
@@ -51,6 +52,9 @@ app.use((req, res, next) => {
   next();
 });
 app.use("/api/analyze", analyzeRoutes);
+
+// ✅ 데모 요청 라우트
+app.post("/api/demo-request", saveDemoRequest);
 
 // ✅ 7. 로컬서버 실행
 const PORT = process.env.PORT || 8080;

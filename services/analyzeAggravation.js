@@ -91,7 +91,7 @@ const response = await generateContentWithFallback({
 
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());
 
-    const LAST_INDEX = 2; // TODO: UI에 맞게 변경해야함
+    const LAST_INDEX = 0; // TODO: UI에 맞게 변경해야함
     if (questionIndex === LAST_INDEX) {
       const allKeywords = diseaseManager.getAllKeywords();
       console.log("🔥 최종 키워드:", allKeywords);
