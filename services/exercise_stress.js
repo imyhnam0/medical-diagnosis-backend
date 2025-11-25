@@ -1,6 +1,5 @@
 // ✅ 운동/스트레스 기반 키워드 분석 (AI 기반 - 순차 질문 방식)
 import { db } from "../server.js";
-import { diseaseManager } from "./DiseaseDataManager.js";
 import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { GoogleGenAI } from "@google/genai";
@@ -101,6 +100,7 @@ Return only a JSON array as output.
       filterList.includes(kw)
     );
     // 누적 저장 (합치기 위해 계속 저장)
+    const diseaseManager = req.diseaseManager;
     validKeywords.forEach(kw => diseaseManager.addKeyword(kw));
 
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());

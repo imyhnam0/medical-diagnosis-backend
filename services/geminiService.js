@@ -4,7 +4,6 @@ import { db } from "../server.js";
 import { GEMINI_API_KEY } from "../config/geminiConfig.js";
 import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 import { GoogleGenAI } from "@google/genai";
-import { diseaseManager } from "./DiseaseDataManager.js";
 
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -43,6 +42,7 @@ export async function callGeminiWithRetry(prompt, { retries = 3, baseDelayMs = 3
 // ✅ 점수 상위 질병 2개 반환
 export async function getTopDiseases(req, res) {
   try {
+    const diseaseManager = req.diseaseManager;
     const top = diseaseManager.getTopDiseases(2); // [{ diseaseName, score }]
     return res.json({
       top: top.map((t) => ({ diseaseName: t.diseaseName, score: t.score })),
@@ -56,6 +56,7 @@ export async function getTopDiseases(req, res) {
 // ✅ 진단 데이터 초기화
 export async function resetDiagnosis(req, res) {
   try {
+    const diseaseManager = req.diseaseManager;
     diseaseManager.reset();
     diseaseManager.clearKeywords();
     return res.json({ ok: true });
@@ -68,6 +69,7 @@ export async function resetDiagnosis(req, res) {
 // ✅ 전체 질병(점수 순 정렬) 반환
 export async function getAllDiseases(req, res) {
   try {
+    const diseaseManager = req.diseaseManager;
     const ranked = diseaseManager.getRankedScores(); // [{ diseaseName, score }, ...]
     return res.json({ all: ranked });
   } catch (error) {

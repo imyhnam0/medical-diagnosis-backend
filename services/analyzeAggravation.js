@@ -1,6 +1,5 @@
 // ✅ 흉통 악화 요인 분석 페이지 (analzeAggravaion)
 import { db } from "../server.js";
-import { diseaseManager } from "./DiseaseDataManager.js";
 import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { GoogleGenAI } from "@google/genai";
@@ -87,6 +86,7 @@ const response = await generateContentWithFallback({
       AGGRAVATION_KEYWORDS.includes(kw)
     );
     // 🔥 키워드 누적 저장
+    const diseaseManager = req.diseaseManager;
     validKeywords.forEach(kw => diseaseManager.addKeyword(kw));
 
     console.log("☑️ 누적된 키워드:", diseaseManager.getAllKeywords());

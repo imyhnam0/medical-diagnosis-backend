@@ -52,6 +52,6 @@ class DiseaseDataManager {
     }
   }
   
-  // 싱글톤 객체로 export
-  export const diseaseManager = new DiseaseDataManager();
+  // 클래스 export (세션별로 인스턴스 생성)
+  export { DiseaseDataManager };
   

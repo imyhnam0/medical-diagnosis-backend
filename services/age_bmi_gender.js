@@ -1,6 +1,5 @@
 // ✅ 나이, BMI, 성별 기반 키워드 분석
 import { db } from "../server.js";
-import { diseaseManager } from "./DiseaseDataManager.js";
 
 export async function analyzeAgeBmiGender(req, res) {
   try {
@@ -65,6 +64,7 @@ export async function analyzeAgeBmiGender(req, res) {
     console.log("🔍 추출된 키워드:", uniqueKeywords);
 
     // 🔹 Firestore 검색 + DiseaseDataManager에 저장
+    const diseaseManager = req.diseaseManager;
     for (const keyword of uniqueKeywords) {
       const snapshot = await db
         .collection("diseases_ko")
