@@ -16,7 +16,9 @@ dotenv.config();
 
 // ✅ 2. Express 앱 설정"type": "module"
 const app = express();
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ['X-Session-Id'], // 클라이언트에서 읽을 수 있도록 헤더 노출
+}));
 app.use(express.json());
 
 // ✅ 3. Firebase Admin 초기화
@@ -51,11 +53,10 @@ app.get("/", (req, res) => {
 // ✅ 6. 세션별 DiseaseManager 미들웨어
 app.use((req, res, next) => {
   // 세션 ID를 헤더에서 가져오거나 새로 생성
-  // 프론트엔드에서 'X-Session-Id' 헤더로 세션 ID를 보낼 수 있음
   let sessionId = req.headers['x-session-id'];
   
   if (!sessionId) {
-    // 세션 ID가 없으면 새로 생성
+    // 세션 ID가 없으면 서버에서 새로 생성
     sessionId = randomUUID();
     console.log(`🆕 새 세션 ID 생성: ${sessionId}`);
   }
@@ -63,6 +64,9 @@ app.use((req, res, next) => {
   // req에 세션 ID와 diseaseManager 붙이기
   req.sessionId = sessionId;
   req.diseaseManager = sessionDiseaseManager.getManager(sessionId);
+  
+  // 응답 헤더에 세션 ID 포함 (클라이언트가 저장할 수 있도록)
+  res.setHeader('X-Session-Id', sessionId);
   
   next();
 });
