@@ -1,43 +1,6 @@
-import fetch from "node-fetch";
 import { parseJsonResponse } from "../utils/parseJsonResponse.js";
 import { db } from "../server.js";
-import { GEMINI_API_KEY } from "../config/geminiConfig.js";
 import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-//429 에러시 재시도하도록
-export async function callGeminiWithRetry(prompt, { retries = 3, baseDelayMs = 3000 } = {}) {
-  if (!GEMINI_API_KEY) {
-    throw new Error("Gemini API 키가 설정되어 있지 않습니다.");
-  }
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(GEMINI_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-      }),
-    });
-
-    if (response.status === 429 && attempt < retries) {
-      const wait = baseDelayMs * Math.pow(2, attempt);
-      console.warn(`⏳ Gemini 429 응답. ${wait}ms 후 재시도합니다. (시도 ${attempt + 1}/${retries + 1})`);
-      await new Promise((resolve) => setTimeout(resolve, wait));
-      continue;
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      throw new Error(`Gemini API 오류: ${response.status} ${errorText}`);
-    }
-
-    return response.json();
-  }
-
-  throw new Error("Gemini API 재시도가 모두 실패했습니다.");
-}
 
 // ✅ 점수 상위 질병 2개 반환
 export async function getTopDiseases(req, res) {

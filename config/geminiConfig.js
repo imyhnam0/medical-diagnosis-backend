@@ -5,6 +5,7 @@ dotenv.config();
 
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_API_KEY_SECOND = process.env.GEMINI_API_KEY_SECOND;
+export const GEMINI_API_KEY_THIRD = process.env.GEMINI_API_KEY_THIRD;
 
 export const GEMINI_MODEL = "gemini-2.0-flash";
 
@@ -14,7 +15,7 @@ export const GEMINI_MODEL = "gemini-2.0-flash";
  * @returns {Promise} - API 응답
  */
 export async function generateContentWithFallback(params) {
-  const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_SECOND].filter(Boolean);
+  const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_SECOND, GEMINI_API_KEY_THIRD].filter(Boolean);
   
   if (apiKeys.length === 0) {
     throw new Error("Gemini API 키가 설정되어 있지 않습니다.");
@@ -30,11 +31,8 @@ export async function generateContentWithFallback(params) {
     } catch (error) {
       lastError = error;
       console.warn(`⚠️ Gemini API 키 ${i + 1}번째 시도 실패:`, error.message);
-      
-      // 마지막 키가 아니면 다음 키로 재시도
       if (i < apiKeys.length - 1) {
         console.log(`🔄 ${i + 2}번째 API 키로 재시도합니다...`);
-        continue;
       }
     }
   }
