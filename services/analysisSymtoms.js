@@ -1,23 +1,18 @@
 import { db } from "../server.js";
-import fetch from "node-fetch";
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-// 증상 관련 전체 추출 가능한 키워드 목록 (예시)
+// 증상 관련 전체 추출 가능한 키워드 목록 
 const SYMPTOM_KEYWORDS = [
   "흉통", "협심증 유사 흉통", "갑작스러운 흉통", "설명되지 않는 흉통", "안정 시 흉통", "작열성 흉통", "흉골 뒤 압박감",
   "흉부 불편감", "흉부 압박감", "흉벽 통증", "흉벽 불편감", "늑골 압통", "방사통", "방사성 흉통",
-  "호흡곤란", "가벼운 호흡곤란", "운동 시 호흡곤란", "야간 발작성 호흡곤란", "기침", "가래", "객혈", "마른기침", 
-  "흉막성 통증", "천명음", "발열", "야간 발한", "피로", "전신 권태", "체중 감소", "두근거림", "실신", 
-  "어지럼증", "다리 부종", "오심", "구토", "설사", "소화기 증상", "속쓰림", "역류", "연하곤란", 
+  "호흡곤란", "가벼운 호흡곤란", "운동 시 호흡곤란", "야간 발작성 호흡곤란", "기침", "가래", "객혈", "마른기침",
+  "흉막성 통증", "천명음", "발열", "야간 발한", "피로", "전신 권태", "체중 감소", "두근거림", "실신",
+  "어지럼증", "다리 부종", "오심", "구토", "설사", "소화기 증상", "속쓰림", "역류", "연하곤란",
   "상복부 불편감", "명치 통증", "복부 불편감", "복부 팽만", "목 통증", "등 통증", "등통증", "등/허리 통증",
-  "관절통", "국소 근육통", "국소 통증", "근육통", "골통", "이질통", "작열통", "압통", "움직임 제한", 
+  "관절통", "국소 근육통", "국소 통증", "근육통", "골통", "이질통", "작열통", "압통", "움직임 제한",
   "근력 약화", "팔 약화", "감각 이상", "저림", "전신 통증", "두개골/흉부 변형", "뻣뻣함", "통증",
-  "발진", "작열감", "가려움", "유방 멍울", "멍", "시각 증상", "수면 문제", "건강 불안", 
-  "신체 증상에 대한 집착", "걱정", "플래시백", "골반 통증", "생리 문제", "우상복부 통증", "측두부 통증", 
+  "발진", "작열감", "가려움", "유방 멍울", "멍", "시각 증상", "수면 문제", "건강 불안",
+  "신체 증상에 대한 집착", "걱정", "플래시백", "골반 통증", "생리 문제", "우상복부 통증", "측두부 통증",
   "설명되지 않는 다발성 증상", "추위 불내성"
 ];
 
@@ -47,30 +42,30 @@ You can assume that the user's symptoms is related to the keywords.
 Please extract all keywords related to the symptoms.
 Please ONLY extract keywords from ${SYMPTOM_KEYWORDS.join(", ")}.
 `;
-const response = await generateContentWithFallback({
-    model: GEMINI_MODEL,
-    contents: [{ parts: [{ text: JSON.stringify({ question, answer }) }] }],
-    config: {
-      // systemInstruction는 문자열로 줘도 됩니다 (공식 예제랑 동일하게)
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "object",
-        properties: {
-          keywords: {
-            type: "array",
-            items: { type: "string" },
-          }
+    const response = await generateContentWithFallback({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: JSON.stringify({ question, answer }) }] }],
+      config: {
+        // systemInstruction는 문자열로 줘도 됩니다 (공식 예제랑 동일하게)
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            keywords: {
+              type: "array",
+              items: { type: "string" },
+            }
+          },
+          required: ["keywords"],
         },
-        required: ["keywords"],
       },
-    },
-  });
-  
+    });
+
 
     console.log("🤖 AI 응답:", response.candidates?.[0]?.content?.parts?.[0]?.text);
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    const { keywords = [] } = parseJsonResponse(rawText);
+    const { keywords = [] } = JSON.parse(rawText);
 
     // 유효한 키워드만 필터링 (SYMPTOM_KEYWORDS 목록에 있는 것만)
     const validKeywords = keywords.filter(kw =>

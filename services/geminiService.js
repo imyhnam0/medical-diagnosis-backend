@@ -1,5 +1,3 @@
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { db } from "../server.js";
 import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
 // ✅ 점수 상위 질병 2개 반환
@@ -84,13 +82,11 @@ export async function getDiseaseInfo(req, res) {
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
     console.log("🤖 Gemini Raw Response:", rawText);
 
-    let parsed = parseJsonResponse(rawText);
-    if (!parsed || typeof parsed !== "object") {
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        parsed = {};
-      }
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      parsed = {};
     }
 
     parsed.description ||= "정보를 가져올 수 없습니다.";

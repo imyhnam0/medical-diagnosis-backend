@@ -1,11 +1,6 @@
 // ✅ 음주/흡연 기반 키워드 분석 (AI 기반 - 순차 질문 방식)
 import { db } from "../server.js";
-import fetch from "node-fetch";
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
 // 음주/흡연 관련 전체 추출 가능한 키워드 목록 (통합)
 const DRINKING_KEYWORDS = [
@@ -86,7 +81,7 @@ Smoking-related keywords: ${SMOKING_KEYWORDS.join(", ")}
 
     console.log("🤖 AI 응답:", response.candidates?.[0]?.content?.parts?.[0]?.text);
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    const { keywords = [] } = parseJsonResponse(rawText);
+    const { keywords = [] } = JSON.parse(rawText);
 
     // 유효한 키워드만 필터
     const validKeywords = keywords.filter(kw => filterList.includes(kw));

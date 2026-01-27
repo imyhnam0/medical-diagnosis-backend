@@ -1,23 +1,18 @@
 // ✅ 운동/스트레스 기반 키워드 분석 (AI 기반 - 순차 질문 방식)
 import { db } from "../server.js";
-import fetch from "node-fetch";
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
 // 운동과 스트레스관련 키워드
 const EXERCISE_KEYWORDS = [
-  "운동 습관","운동 부족","신체활동 부족",
+  "운동 습관", "운동 부족", "신체활동 부족",
   "격한 운동"
 ];
 
 const STRESS_KEYWORDS = [
-  "불안 성향","생활 스트레스","스트레스","불안","회피 행동",
-  "직장 스트레스","정서적 스트레스","가족 스트레스","가족 갈등",
-  "낮은 대처 능력","회복 탄력성 부족","사회적 고립","학대","학대 경험",
-  "실직","전쟁 경험","노숙",
+  "불안 성향", "생활 스트레스", "스트레스", "불안", "회피 행동",
+  "직장 스트레스", "정서적 스트레스", "가족 스트레스", "가족 갈등",
+  "낮은 대처 능력", "회복 탄력성 부족", "사회적 고립", "학대", "학대 경험",
+  "실직", "전쟁 경험", "노숙",
 ];
 
 
@@ -93,10 +88,10 @@ Return only a JSON array as output.
 
     console.log("🤖 AI 응답:", response.candidates?.[0]?.content?.parts?.[0]?.text);
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    const { keywords = [] } = parseJsonResponse(rawText);
+    const { keywords = [] } = JSON.parse(rawText);
 
     // 질문별 필터 리스트로만 필터
-    const validKeywords = keywords.filter(kw => 
+    const validKeywords = keywords.filter(kw =>
       filterList.includes(kw)
     );
     // 누적 저장 (합치기 위해 계속 저장)

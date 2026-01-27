@@ -1,20 +1,13 @@
 // ✅ 직업 기반 키워드 분석 (AI 기반 - 순차 질문 방식)
 import { db } from "../server.js";
-import fetch from "node-fetch";
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
-
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
 // 직업 관련 전체 추출 가능한 키워드 목록 (통합)
 const JOB_KEYWORDS = [
-    "사무직","육체 노동","무거운 물건 들기",
-    "직업적 노출","야외 노동","무거운 물건을 드는 직업",
-    "팔을 많이 쓰는 직업","앉아 있는 직업","운동선수 활동",
-    "바이오매스 노출","감염 노출","감염자 접촉",
+  "사무직", "육체 노동", "무거운 물건 들기",
+  "직업적 노출", "야외 노동", "무거운 물건을 드는 직업",
+  "팔을 많이 쓰는 직업", "앉아 있는 직업", "운동선수 활동",
+  "바이오매스 노출", "감염 노출", "감염자 접촉",
 ];
 
 export async function analyzeJob(req, res) {
@@ -43,35 +36,35 @@ Please extract all keywords related to the job.
 Please ONLY extract keywords from ${JOB_KEYWORDS.join(", ")}.
 `;
 
-const response = await generateContentWithFallback({
-    model: GEMINI_MODEL,
-    contents: [{ parts: [{ text: answer }] }],
-    config: {
-      // systemInstruction는 문자열로 줘도 됩니다 (공식 예제랑 동일하게)
-      systemInstruction: systemPrompt,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "object",
-        properties: {
-          keywords: {
-            type: "array",
-            items: { type: "string" },
+    const response = await generateContentWithFallback({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: answer }] }],
+      config: {
+        // systemInstruction는 문자열로 줘도 됩니다 (공식 예제랑 동일하게)
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            keywords: {
+              type: "array",
+              items: { type: "string" },
+            },
           },
+          required: ["keywords"],
         },
-        required: ["keywords"],
       },
-    },
-  });
-  
+    });
+
 
     console.log("🤖 AI 응답:", response.candidates?.[0]?.content?.parts?.[0]?.text);
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    const { keywords = [] } = parseJsonResponse(rawText);
+    const { keywords = [] } = JSON.parse(rawText);
 
 
-    
+
     // 유효한 키워드만 필터링 (JOB_KEYWORDS 목록에 있는 것만)
-    const validKeywords = keywords.filter(kw => 
+    const validKeywords = keywords.filter(kw =>
       JOB_KEYWORDS.includes(kw)
     );
     // 🔥 키워드 누적 저장
@@ -99,9 +92,9 @@ const response = await generateContentWithFallback({
         });
       }
 
-    
+
       const rawScores = diseaseManager.getRawScores();
-        console.log("질환별 rawScores:", rawScores);
+      console.log("질환별 rawScores:", rawScores);
 
       diseaseManager.clearKeywords(); // 🔥 Reset for next user
     }

@@ -1,11 +1,5 @@
 // ✅ 가슴 통증 기반 키워드 분석 (AI 기반 - 순차 질문 방식)
-import { db } from "../server.js";
-import fetch from "node-fetch";
-import { parseJsonResponse } from "../utils/parseJsonResponse.js";
-import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL, GEMINI_API_KEY, generateContentWithFallback } from "../config/geminiConfig.js";
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+import { GEMINI_MODEL, generateContentWithFallback } from "../config/geminiConfig.js";
 
 // 가슴 통증 관련 전체 추출 가능한 키워드 목록
 const CHEST_PAIN_KEYWORDS = [
@@ -51,6 +45,7 @@ user will input their chest pain description. Find out whether the user's answer
 Keywords are from ${CHEST_PAIN_KEYWORDS.join(", ")}. 
 if the user's answer is similar to the keywords, return TRUE and the similar keyword and follow up question.
 if the user's answer is not similar to the keywords, return FALSE.
+if the user's answer is not related to chest pain, return FALSE.
 Please ONLY return TRUE, FALSE, similar keyword and follow up question.
 Please ONLY extract keywords from ${CHEST_PAIN_KEYWORDS.join(", ")}.
 `;
@@ -76,8 +71,8 @@ Please ONLY extract keywords from ${CHEST_PAIN_KEYWORDS.join(", ")}.
 
     console.log("🤖 AI 응답:", response.candidates?.[0]?.content?.parts?.[0]?.text);
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    const parsed = parseJsonResponse(rawText);
-    
+    const parsed = JSON.parse(rawText);
+
     return res.json(parsed);
 
   } catch (error) {
